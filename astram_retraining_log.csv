@@ -1,0 +1,2 @@
+timestamp,event_cause,vehicle_type,requires_road_closure,description,predicted_tier,actual_clearance_mins,actual_officers_used,ai_was_accurate
+2026-06-20 13:52:55,vehicle_breakdown,two_wheeler,false,normal accident,['Tier 1,60,2,Yes
