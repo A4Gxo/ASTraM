@@ -23,10 +23,10 @@ if os.path.exists(log_file) and os.path.getsize(log_file) > 0:
         'vehicle_type': 'veh_type',
         'actual_clearance_mins': 'impact_duration'
     })
-    # Add safe default coordinates for the feedback data to match the baseline
+    # Add safe default coordinates and enforce UTC Timezone
     df_new['latitude'] = 12.9716
     df_new['longitude'] = 77.5946
-    df_new['start_datetime'] = pd.Timestamp.now()
+    df_new['start_datetime'] = pd.Timestamp.now(tz='UTC') # 🔥 FIX: Enforce UTC
     df_new['priority'] = 'unspecified'
     df_new['event_type'] = 'unspecified'
     df_new['corridor'] = 'unspecified'
@@ -45,10 +45,11 @@ else:
 # ==========================================
 print("🛠️ Processing Geospatial and NLP Features...")
 
-# Calculate impact duration for historical data
+# 🔥 FIX: Enforce UTC on all dates so Pandas math doesn't crash
+df['start_datetime'] = pd.to_datetime(df['start_datetime'], errors='coerce', utc=True)
+
 if 'closed_datetime' in df.columns:
-    df['start_datetime'] = pd.to_datetime(df['start_datetime'], errors='coerce')
-    df['closed_datetime'] = pd.to_datetime(df['closed_datetime'], errors='coerce')
+    df['closed_datetime'] = pd.to_datetime(df['closed_datetime'], errors='coerce', utc=True)
     mask = df['impact_duration'].isna()
     df.loc[mask, 'impact_duration'] = (df.loc[mask, 'closed_datetime'] - df.loc[mask, 'start_datetime']).dt.total_seconds() / 60.0
 
@@ -61,7 +62,7 @@ def assign_tier(minutes):
 
 df['severity_tier'] = df['impact_duration'].apply(assign_tier)
 
-df['start_datetime'] = pd.to_datetime(df['start_datetime'], errors='coerce')
+# Extract time features safely
 df['hour'] = df['start_datetime'].dt.hour.fillna(17).astype(int)
 df['day_of_week'] = df['start_datetime'].dt.dayofweek.fillna(2).astype(int)
 df['month'] = df['start_datetime'].dt.month.fillna(6).astype(int)
