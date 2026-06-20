@@ -60,7 +60,7 @@ veh_type_list = st.sidebar.multiselect("Vehicle Type", ["None", "bmtc_bus", "lcv
 
 st.sidebar.divider() 
 
-# 🔥 NEW NLP & STRUCTURAL INPUTS
+# 🔥 NLP & STRUCTURAL INPUTS
 st.sidebar.subheader("📝 Dispatch Details")
 description_input = st.sidebar.text_area("Incident Notes (AI will read this)", placeholder="e.g., severe accident with a crane blocking both lanes...")
 requires_closure = st.sidebar.radio("Requires Road Closure?", ["False", "True"], horizontal=True)
@@ -79,8 +79,15 @@ st.sidebar.divider()
 show_hotspots = st.sidebar.checkbox("🔥 Overlay Danger Hotspots", value=False)
 demo_mode = st.sidebar.checkbox("🛡️ [Dev] Safe Demo Mode", value=False)
 
-# Center of Bengaluru fallback
-selected_coords = [12.9716, 77.5946] 
+# 🔥 DYNAMIC MAP ROUTING
+zone_coords = {
+    "south": [12.9299, 77.5800],  
+    "east":  [12.9716, 77.6411],  
+    "north": [13.0354, 77.5978],  
+    "west":  [12.9845, 77.5505],  
+    "none":  [12.9716, 77.5946]   
+}
+selected_coords = zone_coords.get(zone.lower(), [12.9716, 77.5946])
 
 # ==========================================
 # PREDICTION ENGINE EXECUTION
@@ -94,16 +101,14 @@ if st.sidebar.button("🚨 Analyze Incident", use_container_width=True):
 if st.session_state.engine_running:
     
     # ---------------------------------------------------------
-    # 🛡️ THE BULLETPROOF DEMO OVERRIDE (For Live Presentations)
+    # 🛡️ THE BULLETPROOF DEMO OVERRIDE
     # ---------------------------------------------------------
     if demo_mode:
         tier_label = "Tier 3: 90+ mins (Severe)"
         duration_label = "90+ mins"
-        confidence_score = 96.8
         color = "red"
         radius = 2500
         officers = 6
-        tow = "Immediate Heavy Dispatch"
         alert = "🚨 SEVERE IMPACT: Barricade entry points and activate diversions."
         safe_cause, safe_veh = "vehicle_breakdown", "bmtc_bus"
         top_features = ["Description (NLP)", "Requires Road Closure", "Veh Type"]
@@ -119,12 +124,10 @@ if st.session_state.engine_running:
         safe_corridor = "unspecified" if corridor == "None" else corridor
         safe_zone = "unspecified" if zone == "None" else zone
         
-        # Format the new NLP & Operational inputs safely
         safe_desc = description_input.lower().strip() if description_input else "unspecified"
         safe_closure = requires_closure.lower()
         safe_auth = is_authenticated.lower()
         
-        # 🔥 SANITY GATEKEEPER
         if safe_cause == "unspecified" and safe_veh == "unspecified" and safe_desc == "unspecified":
             st.warning("⚠️ **INSUFFICIENT DATA:** The AI requires at least a baseline incident cause, vehicle type, or description to calculate a dispatch plan.")
             st.stop()
@@ -152,30 +155,28 @@ if st.session_state.engine_running:
                 'zone': safe_zone,
                 'cause_priority': f"{safe_cause}_{safe_priority}",
                 'station_peak': f"unspecified_{is_peak}",
-                'requires_road_closure': safe_closure, # NEW INPUT
-                'authenticated': safe_auth,            # NEW INPUT
-                'description': safe_desc               # NEW NLP INPUT
+                'requires_road_closure': safe_closure, 
+                'authenticated': safe_auth,            
+                'description': safe_desc               
             }])
             
             prediction_array = model.predict(input_data)
-            probabilities = model.predict_proba(input_data)[0]
-            confidence_score = max(probabilities) * 100
             predicted_tier = str(prediction_array[0])
             
-            # 🔥 EXPLAINABLE AI (XAI) EXTRACTION
+            # EXPLAINABLE AI (XAI) EXTRACTION
             global_importance = model.get_feature_importance()
             top_indices = np.argsort(global_importance)[-3:][::-1]
             feature_names = input_data.columns.tolist()
             top_features = [feature_names[i].replace('_', ' ').title() for i in top_indices]
 
             if "Tier 1" in predicted_tier:
-                color, radius, officers, tow = "green", 500, 1, "No"
+                color, radius, officers = "green", 500, 1
                 alert = "✅ MINIMAL IMPACT: Local warden dispatch authorized."
             elif "Tier 2" in predicted_tier:
-                color, radius, officers, tow = "orange", 1200, 2, "Standby"
+                color, radius, officers = "orange", 1200, 2
                 alert = "⚠️ MODERATE IMPACT: Manually clear adjacent intersections."
             else:
-                color, radius, officers, tow = "red", 2500, 5, "Immediate Heavy"
+                color, radius, officers = "red", 2500, 5
                 alert = "🚨 SEVERE IMPACT: Barricade entry points and activate diversions."
 
             tier_label = predicted_tier.split(":")[0]
@@ -189,16 +190,17 @@ if st.session_state.engine_running:
     # MINIMALIST UI RENDERING
     # ==========================================
     st.info(f"**Action Plan:** {alert}")
-    col1, col2, col3, col4, col5 = st.columns(5)
+    
+    # Reduced to 4 balanced columns (Removed Confidence and Tow, Added Radius back for operations)
+    col1, col2, col3, col4 = st.columns(4)
     col1.metric("Severity", tier_label)
     col2.metric("Est. Clearance", duration_label)
-    col3.metric("AI Confidence", f"{confidence_score:.1f}%") 
-    col4.metric("Personnel", f"{officers} Officers")
-    col5.metric("Tow Support", tow)
+    col3.metric("Personnel", f"{officers} Officers")
+    col4.metric("Impact Radius", f"{radius} meters")
     
     st.markdown("---")
 
-    # 🔥 TAB LAYOUT FOR MAXIMUM CLARITY
+    # 🔥 TAB LAYOUT
     tab1, tab2, tab3 = st.tabs(["🗺️ Tactical Map", "🧠 AI Reasoning & Dispatch", "🔄 Post-Event Learning Loop"])
 
     with tab1:
@@ -214,9 +216,8 @@ if st.session_state.engine_running:
 
     with tab2:
         st.subheader("Explainable AI (XAI) Analysis")
-        st.caption(f"The CatBoost model's confidence of **{confidence_score:.1f}%** was heavily driven by the following NLP and spatial-temporal factors:")
+        st.caption("The CatBoost model's prediction was heavily driven by the following NLP and spatial-temporal factors:")
         
-        # Displaying the XAI feature importance
         xai_cols = st.columns(3)
         xai_cols[0].info(f"🥇 Primary Driver:\n\n**{top_features[0]}**")
         xai_cols[1].warning(f"🥈 Secondary Driver:\n\n**{top_features[1]}**")
@@ -224,6 +225,8 @@ if st.session_state.engine_running:
         
         st.markdown("<br>", unsafe_allow_html=True)
         st.subheader("📱 Automated Field Dispatch Draft")
+        
+        # Dispatch text updated to remove Confidence and Tow Support
         dispatch_text = f"""🚨 **ASTraM DISPATCH ALERT** 🚨
 **Location:** BENGALURU CITY | {selected_coords[0]}, {selected_coords[1]}
 **Incident:** {safe_cause.replace('_', ' ').title()} involving {safe_veh.replace('_', ' ').title()}
@@ -231,7 +234,6 @@ if st.session_state.engine_running:
 
 **ACTION REQUIRED:**
 - Deploy {officers} Traffic Personnel immediately.
-- Tow Support: {tow}.
 - Establish {radius}m perimeter. 
 - {alert.split(':')[1].strip() if ':' in alert else alert}"""
         st.code(dispatch_text, language="markdown")
@@ -246,9 +248,6 @@ if st.session_state.engine_running:
             was_ai_accurate = st.radio("Was the Prediction Accurate?", ["Yes", "No - Predicted Too High", "No - Predicted Too Low"], horizontal=True)
             
             if st.form_submit_button("💾 Save to Training Database"):
-                # ---------------------------------------------------------
-                # 🔄 LIVE CSV LOGGING ENGINE
-                # ---------------------------------------------------------
                 feedback_data = pd.DataFrame([{
                     'timestamp': pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S"),
                     'event_cause': safe_cause,
