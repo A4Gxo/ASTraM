@@ -1,0 +1,7 @@
+streamlit==1.32.0
+pandas==2.2.0
+numpy==1.26.4
+folium==0.15.1
+streamlit-folium==0.19.0
+catboost==1.2.3
+altair==5.2.0
